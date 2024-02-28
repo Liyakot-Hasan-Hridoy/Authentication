@@ -65,6 +65,11 @@ const create_token = async (id: string): Promise<string> => {
     }
 };//token
 
+// Generate a random token
+const generateRandomToken = () => {
+    return randomstring.generate();
+  };// Generate a random token
+
 //reset mail code
 const sendResetPasswordMail = async (name: string, email: string, token: string) => {
     try {
@@ -255,6 +260,7 @@ export const forget_password = async (req: Request, res: Response) => {
     try {
         const email = req.body.email;
         const user_Data = await prisma.users.findMany({ where: { email: email } });
+
         if (user_Data && user_Data.length > 0) {
             const randomString = randomstring.generate();
 
@@ -262,10 +268,9 @@ export const forget_password = async (req: Request, res: Response) => {
 
             sendResetPasswordMail(user_Data[0].name, user_Data[0].email, randomString);
 
-            res.status(200).json({ success: true, msg: "please check Your Inbox of mail and reset your password." });
-
+            return res.status(200).json({ success: true, msg: "Please check your inbox for the password reset instructions." });
         } else {
-            res.status(404).json({ success: false, msg: "User not found with the provided email." });
+            return res.status(404).json({ success: false, msg: "User not found with the provided email." });
         }
     } catch (error) {
         console.error("Prisma error:", error);
@@ -273,33 +278,40 @@ export const forget_password = async (req: Request, res: Response) => {
     }
 };//forget password
 
-//reset password
+// reset password
 export const reset_password = async (req: Request, res: Response) => {
     try {
         const token = req.body.token;
-        const tokenData = await prisma.users.findMany({ where: { id: token } });
-        if (tokenData.length > 0) {
-            const password = req.body.password;
-            const newPassword = await securePassword(password);
+        const newPassword = req.body.password;
 
-            const userData = await prisma.users.update({
-                where: { id: tokenData[0].id },
-                data: { password: newPassword, token: "" },
-                select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    // Add other fields you want to select
-                },
+        const user = await prisma.users.findUnique({ where: { token: token as any } });
+
+        if (user) {
+            const hashedPassword = await securePassword(newPassword);
+
+            const updatedUser = await prisma.users.update({
+                where: { id: user.id },
+                data: { password: hashedPassword, token: null },
             });
 
-            res.status(200).json({ success: true, msg: "User password has been reset", data: userData });
+            const tokenData = await create_token(updatedUser.id.toString());
+
+            const userData = {
+                id: updatedUser.id,
+                name: updatedUser.name,
+                email: updatedUser.email,
+                phone: updatedUser.phone,
+                image: updatedUser.image,
+                token: tokenData,
+            };
+
+            return res.status(200).json({ success: true, msg: "User password has been reset", data: userData });
         } else {
-            res.status(200).json({ success: false, msg: "This link has been expired." });
+            return res.status(404).json({ success: false, msg: "This link has been expired." });
         }
     } catch (error) {
         console.error("Prisma error:", error);
-        res.status(500).json({ success: false, msg: "An error occurred" });
+        return res.status(500).json({ success: false, msg: "An error occurred" });
     }
 };//reset password
 
